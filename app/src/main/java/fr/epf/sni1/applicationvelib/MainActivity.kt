@@ -15,6 +15,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import android.widget.ImageView
 
 class MainActivity : AppCompatActivity() {
 
@@ -64,11 +65,36 @@ class MainActivity : AppCompatActivity() {
                             orientation = LinearLayout.VERTICAL
                             setPadding(64, 64, 64, 64)
 
-                            addView(TextView(context).apply {
-                                text = station.name
-                                textSize = 20f
-                                setTypeface(null, android.graphics.Typeface.BOLD)
-                            })
+                            val headerLayout = LinearLayout(context).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                gravity = Gravity.CENTER_VERTICAL
+
+                                addView(TextView(context).apply {
+                                    text = station.name
+                                    textSize = 20f
+                                    setTypeface(null, android.graphics.Typeface.BOLD)
+                                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                                })
+
+                                addView(ImageView(context).apply {
+                                    setImageResource(R.drawable.baseline_favorite_border_24)
+                                    setPadding(16, 16, 16, 16)
+
+                                    var isLiked = false
+                                    setOnClickListener {
+                                        isLiked = !isLiked
+                                        if (isLiked) {
+                                            setImageResource(R.drawable.baseline_favorite_24)
+                                            setColorFilter(Color.RED)
+                                        } else {
+                                            setImageResource(R.drawable.baseline_favorite_border_24)
+                                            clearColorFilter()
+                                        }
+                                    }
+                                })
+                            }
+
+                            addView(headerLayout)
 
                             addView(TextView(context).apply {
                                 // Le nombre de vélos électriques disponibes est à la position [1], je ne sais pas pourquoi
