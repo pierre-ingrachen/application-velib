@@ -1,21 +1,35 @@
 package fr.epf.sni1.applicationvelib
 
+import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import android.widget.ImageView
+import java.io.File
+
+data class StationSauvegardee(
+    val id: String,
+    val nom: String,
+    val velosMecaniques: Int,
+    val velosElectriques: Int,
+    val placesDisponibles: Int
+)
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +38,45 @@ class MainActivity : AppCompatActivity() {
 
         Configuration.getInstance().userAgentValue = packageName
         setContentView(R.layout.activity_main)
+
+
+        val menuButton = TextView(this).apply {
+            text = "⋮"
+            textSize = 28f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(Color.BLACK)
+            gravity = Gravity.CENTER
+
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.WHITE)
+            }
+            elevation = 12f
+
+            layoutParams = FrameLayout.LayoutParams(120, 120).apply {
+                gravity = Gravity.TOP or Gravity.END
+                setMargins(0, 64, 48, 0)
+            }
+
+            setOnClickListener { view ->
+                val popup = PopupMenu(this@MainActivity, view)
+                popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+
+                popup.setOnMenuItemClickListener { item ->
+                    when (item.itemId) {
+                        R.id.action_carte -> true
+                        R.id.action_sauvegardes -> {
+                            startActivity(Intent(this@MainActivity, SavedStationsActivity::class.java))
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                popup.show()
+            }
+        }
+
+        addContentView(menuButton, menuButton.layoutParams)
 
         val map = findViewById<MapView>(R.id.map)
         map.apply {
@@ -42,7 +95,6 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-
                 val infoResponse = infoService.getStations()
                 val statusResponse = statusService.getStationStatus()
 
@@ -50,39 +102,66 @@ class MainActivity : AppCompatActivity() {
                     val stationStatus = statusResponse.data.stations.find {
                         it.station_id == station.station_id
                     }
-                    val textView = TextView(this@MainActivity)
-                    // Je dois forçer le système à accepter stationStatus
-                    textView.text = stationStatus!!.numBikesAvailable.toString()
-                    textView.textSize = 14f
-                    textView.setTextColor(Color.BLACK)
-                    textView.gravity = Gravity.CENTER
-                    textView.setBackgroundResource(R.drawable.fond_cercle)
 
-                    textView.setOnClickListener {
-                        val bottomSheetDialog = BottomSheetDialog(this@MainActivity)
+                    if (stationStatus != null) {
+                        val textView = TextView(this@MainActivity)
 
-                        val layout = LinearLayout(this@MainActivity).apply {
-                            orientation = LinearLayout.VERTICAL
-                            setPadding(64, 64, 64, 64)
+                        textView.text = stationStatus.numBikesAvailable.toString()
+                        textView.textSize = 14f
+                        textView.setTextColor(Color.BLACK)
+                        textView.gravity = Gravity.CENTER
+                        textView.setBackgroundResource(R.drawable.fond_cercle)
 
-                            val headerLayout = LinearLayout(context).apply {
-                                orientation = LinearLayout.HORIZONTAL
-                                gravity = Gravity.CENTER_VERTICAL
+                        textView.setOnClickListener {
+                            val bottomSheetDialog = BottomSheetDialog(this@MainActivity)
 
-                                addView(TextView(context).apply {
-                                    text = station.name
-                                    textSize = 20f
-                                    setTypeface(null, android.graphics.Typeface.BOLD)
-                                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                                })
+                            val layout = LinearLayout(this@MainActivity).apply {
+                                orientation = LinearLayout.VERTICAL
+                                setPadding(64, 64, 64, 64)
 
-                                addView(ImageView(context).apply {
-                                    setImageResource(R.drawable.baseline_favorite_border_24)
-                                    setPadding(16, 16, 16, 16)
+                                val headerLayout = LinearLayout(context).apply {
+                                    orientation = LinearLayout.HORIZONTAL
+                                    gravity = Gravity.CENTER_VERTICAL
 
-                                    var isLiked = false
-                                    setOnClickListener {
-                                        isLiked = !isLiked
+                                    val textContainer = LinearLayout(context).apply {
+                                        orientation = LinearLayout.VERTICAL
+                                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+                                        addView(TextView(context).apply {
+                                            text = station.name
+                                            textSize = 24f
+                                            setTypeface(null, android.graphics.Typeface.BOLD)
+                                            setTextColor(Color.BLACK)
+                                        })
+
+                                        addView(TextView(context).apply {
+                                            text = """
+                                                🚴 ${stationStatus.numBikesAvailable} vélos disponibles
+                                                Mécaniques : ${stationStatus.num_bikes_available_types[0].mechanical} | Électriques : ${stationStatus.num_bikes_available_types[1].ebike}
+                                                🅿️ Places libres : ${stationStatus.numDocksAvailable}
+                                            """.trimIndent()
+                                            textSize = 22f
+                                            setTextColor(Color.DKGRAY)
+                                            setPadding(0, 16, 0, 0)
+                                        })
+                                    }
+
+                                    addView(textContainer)
+
+                                    addView(ImageView(context).apply {
+                                        setPadding(16, 16, 16, 16)
+
+                                        val gson = Gson()
+                                        val fichier = File(context.filesDir, "stations_favorites.json")
+
+                                        val listeInitiale = if (fichier.exists()) {
+                                            gson.fromJson(fichier.readText(), Array<StationSauvegardee>::class.java).toMutableList()
+                                        } else {
+                                            mutableListOf()
+                                        }
+
+                                        var isLiked = listeInitiale.any { it.id == station.station_id.toString() }
+
                                         if (isLiked) {
                                             setImageResource(R.drawable.baseline_favorite_24)
                                             setColorFilter(Color.RED)
@@ -90,66 +169,60 @@ class MainActivity : AppCompatActivity() {
                                             setImageResource(R.drawable.baseline_favorite_border_24)
                                             clearColorFilter()
                                         }
-                                    }
-                                })
+
+                                        setOnClickListener {
+                                            isLiked = !isLiked
+
+                                            val listeStations = if (fichier.exists()) {
+                                                gson.fromJson(fichier.readText(), Array<StationSauvegardee>::class.java).toMutableList()
+                                            } else {
+                                                mutableListOf()
+                                            }
+
+                                            if (isLiked) {
+                                                setImageResource(R.drawable.baseline_favorite_24)
+                                                setColorFilter(Color.RED)
+
+                                                val nouvelleStation = StationSauvegardee(
+                                                    id = station.station_id.toString(),
+                                                    nom = station.name,
+                                                    velosMecaniques = stationStatus.num_bikes_available_types[0].mechanical,
+                                                    velosElectriques = stationStatus.num_bikes_available_types[1].ebike,
+                                                    placesDisponibles = stationStatus.numDocksAvailable
+                                                )
+
+                                                listeStations.removeAll { it.id == nouvelleStation.id }
+                                                listeStations.add(nouvelleStation)
+                                            } else {
+                                                setImageResource(R.drawable.baseline_favorite_border_24)
+                                                clearColorFilter()
+
+                                                listeStations.removeAll { it.id == station.station_id.toString() }
+                                            }
+
+                                            fichier.writeText(gson.toJson(listeStations))
+                                        }
+                                    })
+                                }
+
+                                addView(headerLayout)
                             }
 
-                            addView(headerLayout)
-
-                            addView(TextView(context).apply {
-                                // Le nombre de vélos électriques disponibes est à la position [1], je ne sais pas pourquoi
-                                text = "${stationStatus.num_bikes_available_types[1].ebike} vélos électriques"
-                                textSize = 24f
-                                setPadding(0, 24, 0, 0)
-
-                                gravity = android.view.Gravity.CENTER_VERTICAL
-
-                                val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.velib_bleu)
-                                drawable?.setBounds(0, 0, 120, 90)
-                                setCompoundDrawables(drawable, null, null, null)
-                                compoundDrawablePadding = 16
-                            })
-
-                            addView(TextView(context).apply {
-                                text = "${stationStatus.num_bikes_available_types[0].mechanical} vélos mécaniques"
-                                textSize = 24f
-                                setPadding(0, 24, 0, 0)
-
-                                gravity = android.view.Gravity.CENTER_VERTICAL
-
-                                val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.logo_velib)
-                                drawable?.setBounds(0, 0, 120, 90)
-                                setCompoundDrawables(drawable, null, null, null)
-                                compoundDrawablePadding = 16
-                            })
-
-                            addView(TextView(context).apply {
-                                text = "${stationStatus.numDocksAvailable} places disponibles"
-                                textSize = 24f
-                                setPadding(0, 24, 0, 0)
-                                gravity = android.view.Gravity.CENTER_VERTICAL
-
-                                val drawable = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.parking)
-                                drawable?.setBounds(0, 0, 120, 90)
-                                setCompoundDrawables(drawable, null, null, null)
-                                compoundDrawablePadding = 16
-                            })
+                            bottomSheetDialog.setContentView(layout)
+                            bottomSheetDialog.show()
                         }
 
-                        bottomSheetDialog.setContentView(layout)
-                        bottomSheetDialog.show()
+                        val layoutParams = MapView.LayoutParams(
+                            80,
+                            80,
+                            GeoPoint(station.lat, station.lon),
+                            MapView.LayoutParams.CENTER,
+                            0,
+                            0
+                        )
+
+                        map.addView(textView, layoutParams)
                     }
-
-                    val layoutParams = MapView.LayoutParams(
-                        80,
-                        80,
-                        GeoPoint(station.lat, station.lon),
-                        MapView.LayoutParams.CENTER,
-                        0,
-                        0
-                    )
-
-                    map.addView(textView, layoutParams)
                 }
 
                 map.invalidate()
