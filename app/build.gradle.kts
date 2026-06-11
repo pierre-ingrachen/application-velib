@@ -53,6 +53,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    // La localisation
+    implementation("com.google.android.gms:play-services-location:21.1.0")
     // Pour afficher la carte avec OpenStreetMap
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }

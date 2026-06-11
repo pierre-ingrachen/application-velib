@@ -1,18 +1,33 @@
 package fr.epf.sni1.applicationvelib
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.Gravity
+import android.view.inputmethod.InputMethodManager
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
@@ -33,13 +48,28 @@ data class StationSauvegardee(
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private var searchRadiusMeters = 1000f
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            locateUserAndOpenNearbyStations()
+        } else {
+            Toast.makeText(this, "Permission de localisation refusée", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         Configuration.getInstance().userAgentValue = packageName
         setContentView(R.layout.activity_main)
 
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
+        // --- Bouton Menu ---
         val menuButton = TextView(this).apply {
             text = "⋮"
             textSize = 28f
@@ -75,9 +105,65 @@ class MainActivity : AppCompatActivity() {
                 popup.show()
             }
         }
-
         addContentView(menuButton, menuButton.layoutParams)
 
+        // --- Barre de recherche ---
+        val searchBar = AutoCompleteTextView(this).apply {
+            hint = "Rechercher une station..."
+            textSize = 16f
+            setPadding(48, 0, 48, 0)
+            setSingleLine(true)
+            setTextColor(Color.BLACK)
+
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 60f
+                setColor(Color.WHITE)
+            }
+            elevation = 12f
+
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                120
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                setMargins(48, 64, 200, 0)
+            }
+        }
+        addContentView(searchBar, searchBar.layoutParams)
+
+        // --- Bouton Localisation (Modifié en Rectangle Arrondi avec Texte) ---
+        val locationButton = TextView(this).apply {
+            text = "Stations à proximité"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(48, 0, 48, 0) // Marges internes gauche/droite pour le texte
+
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 30f // Coins arrondis du rectangle
+                setColor(Color.parseColor("#007BFF")) // Bleu
+            }
+            elevation = 16f
+
+            // Largeur adaptable au contenu (WRAP_CONTENT) et hauteur fixe (120)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                120
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                setMargins(0, 0, 0, 64) // Centré horizontalement en bas
+            }
+
+            setOnClickListener {
+                showRadiusDialog()
+            }
+        }
+        addContentView(locationButton, locationButton.layoutParams)
+
+        // --- Carte ---
         val map = findViewById<MapView>(R.id.map)
         map.apply {
             setMultiTouchControls(true)
@@ -85,6 +171,7 @@ class MainActivity : AppCompatActivity() {
             controller.setCenter(GeoPoint(48.7891474, 2.3268263))
         }
 
+        // --- API Retrofit ---
         val retrofit = Retrofit.Builder()
             .baseUrl("https://velib-metropole-opendata.smovengo.cloud/")
             .addConverterFactory(GsonConverterFactory.create())
@@ -97,6 +184,30 @@ class MainActivity : AppCompatActivity() {
             try {
                 val infoResponse = infoService.getStations()
                 val statusResponse = statusService.getStationStatus()
+
+                val stationList = infoResponse.data.stations
+                val markersMap = mutableMapOf<String, TextView>()
+
+                val stationNames = stationList.map { it.name }.toTypedArray()
+                val adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_dropdown_item_1line, stationNames)
+                searchBar.setAdapter(adapter)
+
+                searchBar.setOnItemClickListener { parent, _, position, _ ->
+                    val selectedName = parent.getItemAtPosition(position) as String
+                    val selectedStation = stationList.find { it.name == selectedName }
+
+                    if (selectedStation != null) {
+                        val point = GeoPoint(selectedStation.lat, selectedStation.lon)
+                        map.controller.animateTo(point)
+                        map.controller.setZoom(18.0)
+
+                        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        imm.hideSoftInputFromWindow(searchBar.windowToken, 0)
+                        searchBar.clearFocus()
+
+                        markersMap[selectedStation.station_id.toString()]?.performClick()
+                    }
+                }
 
                 infoResponse.data.stations.forEach { station ->
                     val stationStatus = statusResponse.data.stations.find {
@@ -111,6 +222,8 @@ class MainActivity : AppCompatActivity() {
                         textView.setTextColor(Color.BLACK)
                         textView.gravity = Gravity.CENTER
                         textView.setBackgroundResource(R.drawable.fond_cercle)
+
+                        markersMap[station.station_id.toString()] = textView
 
                         textView.setOnClickListener {
                             val bottomSheetDialog = BottomSheetDialog(this@MainActivity)
@@ -227,8 +340,88 @@ class MainActivity : AppCompatActivity() {
 
                 map.invalidate()
 
+                val stationToOpenId = intent.getStringExtra("STATION_TO_OPEN")
+                if (stationToOpenId != null) {
+                    val targetStation = stationList.find { it.station_id.toString() == stationToOpenId }
+                    if (targetStation != null) {
+                        val point = org.osmdroid.util.GeoPoint(targetStation.lat, targetStation.lon)
+                        map.controller.setCenter(point)
+                        map.controller.setZoom(18.0)
+
+                        markersMap[stationToOpenId]?.performClick()
+                    }
+                    intent.removeExtra("STATION_TO_OPEN")
+                }
+
             } catch (e: Exception) {
                 Log.e("MainActivity", "Erreur lors de la récupération des stations", e)
+            }
+        }
+    }
+
+    private fun showRadiusDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Recherche à proximité")
+        builder.setMessage("Entrez le rayon de recherche en mètres :")
+
+        val container = FrameLayout(this)
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(searchRadiusMeters.toInt().toString())
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(64, 0, 64, 0)
+            }
+        }
+        container.addView(input)
+        builder.setView(container)
+
+        builder.setPositiveButton("Rechercher") { dialog, _ ->
+            val newRadius = input.text.toString().toFloatOrNull()
+            if (newRadius != null && newRadius > 0) {
+                searchRadiusMeters = newRadius
+                checkLocationPermissionAndLocate()
+            } else {
+                Toast.makeText(this, "Veuillez entrer un rayon valide", Toast.LENGTH_SHORT).show()
+            }
+            dialog.dismiss()
+        }
+
+        builder.setNegativeButton("Annuler") { dialog, _ ->
+            dialog.cancel()
+        }
+
+        builder.show()
+    }
+
+    private fun checkLocationPermissionAndLocate() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                locateUserAndOpenNearbyStations()
+            }
+            else -> {
+                requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun locateUserAndOpenNearbyStations() {
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                val intent = Intent(this, NearbyStationsActivity::class.java).apply {
+                    putExtra("USER_LAT", location.latitude)
+                    putExtra("USER_LON", location.longitude)
+                    putExtra("SEARCH_RADIUS", searchRadiusMeters)
+                }
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "Impossible de récupérer votre position actuelle", Toast.LENGTH_SHORT).show()
             }
         }
     }
