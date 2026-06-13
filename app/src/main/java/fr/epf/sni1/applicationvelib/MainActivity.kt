@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var searchRadiusMeters = 1000f
 
+    // Obligation de demander l'autorisation pour la localisation
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -69,7 +70,6 @@ class MainActivity : AppCompatActivity() {
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        // --- Bouton Menu ---
         val menuButton = TextView(this).apply {
             text = "⋮"
             textSize = 28f
@@ -107,7 +107,6 @@ class MainActivity : AppCompatActivity() {
         }
         addContentView(menuButton, menuButton.layoutParams)
 
-        // --- Barre de recherche ---
         val searchBar = AutoCompleteTextView(this).apply {
             hint = "Rechercher une station..."
             textSize = 16f
@@ -132,29 +131,26 @@ class MainActivity : AppCompatActivity() {
         }
         addContentView(searchBar, searchBar.layoutParams)
 
-        // --- Bouton Localisation (Modifié en Rectangle Arrondi avec Texte) ---
         val locationButton = TextView(this).apply {
             text = "Stations à proximité"
             textSize = 16f
             setTextColor(Color.WHITE)
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(48, 0, 48, 0) // Marges internes gauche/droite pour le texte
-
+            setPadding(48, 0, 48, 0)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = 30f // Coins arrondis du rectangle
-                setColor(Color.parseColor("#007BFF")) // Bleu
+                cornerRadius = 30f
+                setColor(Color.parseColor("#007BFF"))
             }
             elevation = 16f
 
-            // Largeur adaptable au contenu (WRAP_CONTENT) et hauteur fixe (120)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 120
             ).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                setMargins(0, 0, 0, 64) // Centré horizontalement en bas
+                setMargins(0, 0, 0, 64)
             }
 
             setOnClickListener {
@@ -163,7 +159,6 @@ class MainActivity : AppCompatActivity() {
         }
         addContentView(locationButton, locationButton.layoutParams)
 
-        // --- Carte ---
         val map = findViewById<MapView>(R.id.map)
         map.apply {
             setMultiTouchControls(true)
@@ -171,7 +166,6 @@ class MainActivity : AppCompatActivity() {
             controller.setCenter(GeoPoint(48.7891474, 2.3268263))
         }
 
-        // --- API Retrofit ---
         val retrofit = Retrofit.Builder()
             .baseUrl("https://velib-metropole-opendata.smovengo.cloud/")
             .addConverterFactory(GsonConverterFactory.create())
@@ -247,6 +241,7 @@ class MainActivity : AppCompatActivity() {
                                             setTextColor(Color.BLACK)
                                         })
 
+                                        // J'utilise des emojis (plus facile à intégrer que les images)
                                         addView(TextView(context).apply {
                                             text = """
                                                 🚴 ${stationStatus.numBikesAvailable} vélos disponibles
