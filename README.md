@@ -1,9 +1,11 @@
-# Application Vélib de Pierre INGRACHEN - EPF SNI1
-## Guide d'utilisation
-### Page d'accueil
+# Application Vélib de Pierre INGRACHEN - Guide d'utilisation
+## Page d'accueil
 L'application s'ouvre sur la page d'accueil présentant les stations Vélib sur une carte de la région parisienne.<br>
 En cliquant sur une station, on a accès aux détails de la station (nombre de vélos disponibles, nombre de places de stationnement).<br>
 On trouve aussi la possiblité d'ajouter une station en favori en cliquant sur le coeur.
+## Autres fonctionnalités
+### Barre de recherche
+En haut à gauche, la barre de recherche permet à l'utilisateur de chercher des stations sur la carte.
 ### Menu déroulant
 En cliquant sur les 3 points en haut à droite, on accède à un menu déroulant permettant de sélectionner soit la carte, soit les stations favorites.
 ### Liste de stations favorites
